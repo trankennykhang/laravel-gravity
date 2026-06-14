@@ -1,0 +1,130 @@
+[
+    {
+        "name": "Gravity Administrator",
+        "email": "admin@gravity.com",
+        "password": "$2y$12$nY\/K90pGk5Sk9vlKGB39JuXQR0nheAZlpHkOL6u4.T5Q0GAPIZ06C",
+        "id": 1,
+        "created_at": "2026-05-20 12:47:06",
+        "updated_at": "2026-05-20 12:47:06"
+    },
+    {
+        "name": "Dr. Elizabeth Shaw",
+        "email": "elizabeth.shaw@gravity.com",
+        "password": "$2y$12$wAq\/nhQMnCcqB.ZVkLDSAupbwj7imNDVdnJGFTaDP6ir0tn8q90oG",
+        "id": 2,
+        "created_at": "2026-05-20 12:47:06",
+        "updated_at": "2026-05-20 12:47:06"
+    },
+    {
+        "name": "Capt. Joseph Cooper",
+        "email": "joseph.cooper@gravity.com",
+        "password": "$2y$12$KUxj7JHu8XJlEpMd.FfEZuMgNWbcsP1vgcwACitdx5M4E91ePB6Cy",
+        "id": 3,
+        "created_at": "2026-05-20 12:47:06",
+        "updated_at": "2026-05-20 12:47:06"
+    },
+    {
+        "name": "Dr. Amelia Brand",
+        "email": "amelia.brand@gravity.com",
+        "password": "$2y$12$Hyq8Ju2rk1K9rsENVWP4sOh7xLRmudzEGmNB7RZTjhQKQMHU2a5H2",
+        "id": 4,
+        "created_at": "2026-05-20 12:47:07",
+        "updated_at": "2026-05-20 12:47:07"
+    },
+    {
+        "name": "Dr. Mann",
+        "email": "mann@gravity.com",
+        "password": "$2y$12$u3iRDLe8m2gk2CLcKUzlOO.N0ykIKZo0F5xS1RAcI4Y4tfcPTUCBS",
+        "id": 5,
+        "created_at": "2026-05-20 12:47:07",
+        "updated_at": "2026-05-20 12:47:07"
+    },
+    {
+        "name": "Murph Cooper",
+        "email": "murph@gravity.com",
+        "password": "$2y$12$f0mDke3Ccg7LmDL3Rhyrm.SAaTuIeuREohGS2G.hPIq6dvnfJaBhy",
+        "id": 6,
+        "created_at": "2026-05-20 12:47:07",
+        "updated_at": "2026-05-20 12:47:07"
+    },
+    {
+        "name": "TARS",
+        "email": "tars@gravity.com",
+        "password": "$2y$12$jMvjXI8vTsrn5hmvw5n\/g.iTS.ywpfh8TXdvowJMK2bguCnv2Qkwi",
+        "id": 7,
+        "created_at": "2026-05-20 12:47:07",
+        "updated_at": "2026-05-20 12:47:07"
+    },
+    {
+        "name": "CASE",
+        "email": "case@gravity.com",
+        "password": "$2y$12$kojm\/GBgfqq78suzRrsn\/Ovkt3qCL2zqYDqeOLwKQBYdOBILa1wAm",
+        "id": 8,
+        "created_at": "2026-05-20 12:47:07",
+        "updated_at": "2026-05-20 12:47:07"
+    },
+    {
+        "name": "Dr. Ryan Stone",
+        "email": "ryan.stone@gravity.com",
+        "password": "$2y$12$COeQ\/yVl\/5LKGmb.JjcS1OH7dCLP2HmBG\/CXY71d5xQRs\/X0.9Rr6",
+        "id": 9,
+        "created_at": "2026-05-20 12:47:07",
+        "updated_at": "2026-05-20 12:47:07"
+    },
+    {
+        "name": "Matt Kowalski",
+        "email": "matt.kowalski@gravity.com",
+        "password": "$2y$12$Oo70UJMikbEY1HkmjP.SleN\/5SIPm8Hbj40.8n6YYel.opoEh0Pfa",
+        "id": 10,
+        "created_at": "2026-05-20 12:47:08",
+        "updated_at": "2026-05-20 12:47:08"
+    },
+    {
+        "name": "Mark Watney",
+        "email": "mark.watney@gravity.com",
+        "password": "$2y$12$k4xa04c.KXwlTIfpmZ1UEOte7.esgeNLIoZtbG7jJF02Dc1Bq4gkC",
+        "id": 11,
+        "created_at": "2026-05-20 12:47:08",
+        "updated_at": "2026-05-20 12:47:08"
+    },
+    {
+        "name": "Melissa Lewis",
+        "email": "melissa.lewis@gravity.com",
+        "password": "$2y$12$\/yoRqK0IHMt0QZeHoRZESO5E1malY\/W9yHEmDKGQyOx2pbIA0G9km",
+        "id": 12,
+        "created_at": "2026-05-20 12:47:08",
+        "updated_at": "2026-05-20 12:47:08"
+    },
+    {
+        "name": "Rick Martinez",
+        "email": "rick.martinez@gravity.com",
+        "password": "$2y$12$lCb0IhWTuCrHKtLcEpa0oOZjbTGI2t9zdbSiEcvmrpxqIbJaa3HRO",
+        "id": 13,
+        "created_at": "2026-05-20 12:47:08",
+        "updated_at": "2026-05-20 12:47:08"
+    },
+    {
+        "name": "Chris Beck",
+        "email": "chris.beck@gravity.com",
+        "password": "$2y$12$0iZCh7MaAFUEnba64qCdduvYBIUymq1j8248YtL0.Qfa1T0Kh9\/3G",
+        "id": 14,
+        "created_at": "2026-05-20 12:47:08",
+        "updated_at": "2026-05-20 12:47:08"
+    },
+    {
+        "name": "Beth Johanssen",
+        "email": "beth.johanssen@gravity.com",
+        "password": "$2y$12$tb5AgZIqsCInYZH9ZMs.N.KviskkMF2keB7U5KPKDlNOx6WFrsnDy",
+        "id": 15,
+        "created_at": "2026-05-20 12:47:08",
+        "updated_at": "2026-05-20 12:47:08"
+    },
+    {
+        "name": "Jane Smith",
+        "email": "jane.smith@gravity.com",
+        "password": "$2y$12$QD8Qbhj24pFO05aQFoxUvuCPiXVePPcPaGb\/OX.yKmxKxpOwATmhy",
+        "id": 16,
+        "created_at": "2026-05-21 11:38:59",
+        "updated_at": "2026-05-21 11:41:47"
+    }
+]
