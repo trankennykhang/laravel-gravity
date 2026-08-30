@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # 1. Central OTel Hub
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    volumes:
+      - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317" # gRPC receiver for Laravel
+      - "4318:4318" # HTTP receiver for Laravel
+    restart: unless-stopped
+    depends_on:
+      - tempo
+      - loki
+
+  # 2. Traces Backend
+  tempo:
+    image: grafana/tempo:latest
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo API
+    restart: unless-stopped
+
+  # 3. Logs Backend
+  loki:
+    image: grafana/loki:latest
+    command: [ "-config.file=/etc/loki/local-config.yaml" ]
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  # 4. Visualization UI
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  tempo-data:
+  grafana-data:

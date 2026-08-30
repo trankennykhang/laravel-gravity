@@ -128,5 +128,9 @@ return [
         ],
 
     ],
-
+    'otlp' => [
+        'driver' => 'monolog',
+        'handler' => \Monolog\Handler\NoopHandler::class, // replaced by OTel auto-instrumentation
+        'level'   => 'debug',
+    ],
 ];
