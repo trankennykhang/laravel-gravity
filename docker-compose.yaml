@@ -23,6 +23,14 @@ services:
       - DB_CONNECTION=${DB_CONNECTION:-sqlite}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # OpenTelemetry
+      - OTEL_PHP_AUTOLOAD_ENABLED=true
+      - OTEL_SERVICE_NAME=laravel-gravity-app
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       # Xdebug configuration (modes: off, develop, debug, trace, profile, coverage)
       - XDEBUG_MODE=${XDEBUG_MODE:-off}
       - XDEBUG_CONFIG=${XDEBUG_CONFIG:-client_host=host.docker.internal client_port=9003}
@@ -100,6 +108,14 @@ services:
       - DB_CONNECTION=${DB_CONNECTION:-sqlite}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # OpenTelemetry
+      - OTEL_PHP_AUTOLOAD_ENABLED=true
+      - OTEL_SERVICE_NAME=laravel-gravity-queue
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       # Xdebug configuration
       - XDEBUG_MODE=${XDEBUG_MODE:-off}
       - XDEBUG_CONFIG=${XDEBUG_CONFIG:-client_host=host.docker.internal client_port=9003}
@@ -123,6 +139,89 @@ services:
     networks:
       - gravity-network
 
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: laravel-gravity-otel
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./docker/observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8889:8889" # Prometheus metrics exporter
+    networks:
+      - gravity-network
+    depends_on:
+      - tempo
+      - loki
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: laravel-gravity-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./docker/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - gravity-prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - gravity-network
+
+  # Loki
+  loki:
+    image: grafana/loki:latest
+    container_name: laravel-gravity-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./docker/observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - gravity-loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - gravity-network
+
+  # Tempo
+  tempo:
+    image: grafana/tempo:latest
+    container_name: laravel-gravity-tempo
+    restart: unless-stopped
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./docker/observability/tempo.yaml:/etc/tempo.yaml:ro
+      - gravity-tempo-data:/tmp/tempo
+    ports:
+      - "3200:3200"
+    networks:
+      - gravity-network
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: laravel-gravity-grafana
+    restart: unless-stopped
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./docker/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - gravity-grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - gravity-network
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
 networks:
   gravity-network:
     driver: bridge
@@ -131,4 +230,12 @@ volumes:
   gravity-mysql-data:
     driver: local
   gravity-redis-data:
+    driver: local
+  gravity-prometheus-data:
+    driver: local
+  gravity-loki-data:
+    driver: local
+  gravity-tempo-data:
+    driver: local
+  gravity-grafana-data:
     driver: local
