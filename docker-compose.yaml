@@ -25,6 +25,7 @@ services:
       - REDIS_PORT=6379
       # OpenTelemetry
       - OTEL_PHP_AUTOLOAD_ENABLED=true
+      - OTEL_PHP_TRACE_CLI_ENABLED=true
       - OTEL_SERVICE_NAME=laravel-gravity-app
       - OTEL_TRACES_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER=otlp
@@ -110,6 +111,7 @@ services:
       - REDIS_PORT=6379
       # OpenTelemetry
       - OTEL_PHP_AUTOLOAD_ENABLED=true
+      - OTEL_PHP_TRACE_CLI_ENABLED=true
       - OTEL_SERVICE_NAME=laravel-gravity-queue
       - OTEL_TRACES_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER=otlp
@@ -212,9 +214,11 @@ services:
       - GF_AUTH_DISABLE_LOGIN_FORM=true
     volumes:
       - ./docker/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./docker/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - gravity-grafana-data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "3001:3000"
     networks:
       - gravity-network
     depends_on:

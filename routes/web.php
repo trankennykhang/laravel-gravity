@@ -11,18 +11,56 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 });
 Route::get('/otel-test', function () {
-    $tracer = Globals::tracerProvider()->getTracer('laravel-manual-test');
-    
-    // 2. Start a manual test span block
-    $span = $tracer->spanBuilder('ManualTestEvent')->startSpan();
-    
-    // 3. Attach dummy context data
-    $span->setAttribute('test.message', 'Hello from Laravel Server 1!');
-    
-    // 4. End the span to force execution and trigger the flush cycle
+    // 1. Traces (Tempo)
+    $tracer = Globals::tracerProvider()->getTracer('laravel-web-test');
+    $span = $tracer->spanBuilder('web:test_telemetry')
+        ->setAttribute('test.message', 'Hello from Laravel Gravity Web Test!')
+        ->setAttribute('test.timestamp', now()->toIso8601String())
+        ->startSpan();
+
+    $traceId = $span->getContext()->getTraceId();
+    $spanId = $span->getContext()->getSpanId();
     $span->end();
-    
-    return response()->json(['status' => 'Manual span dispatched to collector!']);
+
+    // 2. Metrics (Prometheus)
+    $meter = Globals::meterProvider()->getMeter('laravel-web-test');
+    $counter = $meter->createCounter('test_counter', 'count', 'Telemetry test verification counter');
+    $counter->add(1, [
+        'source' => 'web',
+        'status' => 'success',
+    ]);
+
+    // 3. Logs (Loki)
+    $logger = Globals::loggerProvider()->getLogger('laravel-web-test');
+    $logRecord = (new \OpenTelemetry\API\Logs\LogRecord("Verification telemetry triggered via web /otel-test with Trace ID: {$traceId}"))
+        ->setSeverityText('INFO')
+        ->setSeverityNumber(\OpenTelemetry\API\Logs\Severity::INFO)
+        ->setAttribute('trace_id', $traceId)
+        ->setAttribute('source', 'web');
+    $logger->emit($logRecord);
+    \Illuminate\Support\Facades\Log::info("Verification telemetry triggered via web /otel-test with Trace ID: {$traceId}");
+
+    // Flush immediately to collector
+    Globals::tracerProvider()->forceFlush();
+    Globals::meterProvider()->forceFlush();
+    Globals::loggerProvider()->forceFlush();
+
+    return response()->json([
+        'status' => 'success',
+        'message' => 'Telemetry event successfully generated and exported!',
+        'telemetry' => [
+            'trace_id' => $traceId,
+            'span_id' => $spanId,
+            'metric' => 'test_counter_count_total incremented',
+            'log' => 'Emitted to Loki with Trace ID correlation',
+        ],
+        'grafana_links' => [
+            'dashboard' => 'http://localhost:3001/d/laravel-gravity-overview',
+            'tempo_trace' => 'http://localhost:3001/explore?left=' . urlencode(json_encode(['datasource' => 'tempo', 'queries' => [['query' => $traceId, 'queryType' => 'traceql']]])),
+            'loki_logs' => 'http://localhost:3001/explore?left=' . urlencode(json_encode(['datasource' => 'loki', 'queries' => [['expr' => '{service_name=~".+"}']]])),
+            'prometheus_metrics' => 'http://localhost:3001/explore?left=' . urlencode(json_encode(['datasource' => 'prometheus', 'queries' => [['expr' => 'test_counter_count_total']]])),
+        ],
+    ]);
 });
 Route::get('/otel-debug', function () {
     return [

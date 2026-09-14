@@ -1,0 +1,126 @@
+# ==============================================================================
+# Commands Executed During Session (otel, queue, tempo fix)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Initial Investigation
+# ------------------------------------------------------------------------------
+docker compose ps -a
+docker compose logs otel-collector queue tempo --tail 50
+docker compose logs queue --tail 20
+grep -n "8\.4" vendor/composer/installed.json
+sed -n '5760,5780p' vendor/composer/installed.json
+head -n 25 vendor/symfony/clock/composer.json
+php -v
+git status
+git diff docker-compose.yaml
+docker compose exec app php -v
+docker compose exec app composer --version
+docker compose exec app composer check-platform-reqs
+docker compose exec app composer install --dry-run
+git log -p -2 docker/Dockerfile
+git log -1 composer.json
+git diff 8557b60b9d96859f14a1db51d2668ca6b38afc60~1..8557b60b9d96859f14a1db51d2668ca6b38afc60 composer.json
+
+# ------------------------------------------------------------------------------
+# 2. Investigating and Validating Tempo & Otel Collector
+# ------------------------------------------------------------------------------
+docker run --rm grafana/tempo:latest --version
+docker run --rm --entrypoint cat grafana/tempo:latest /etc/tempo.yaml
+docker run --rm grafana/tempo:latest -help
+docker run --rm grafana/tempo:latest -config.file=/dev/null
+curl -s http://localhost:3100/ready
+curl -i http://localhost:8080
+
+# ------------------------------------------------------------------------------
+# 3. Fixing Tempo (Config & Permissions)
+# ------------------------------------------------------------------------------
+# Note: In docker/observability/tempo.yaml, removed obsolete 'compactor' block,
+# bound distributor receiver endpoints to 0.0.0.0, and added wal path.
+docker run --rm grafana/tempo:latest id
+docker inspect grafana/tempo:latest --format '{{.Config.User}}'
+docker volume ls | grep tempo
+docker run --rm -v laravel-gravity_gravity-tempo-data:/tempo busybox ls -ld /tempo
+docker run --rm -v laravel-gravity_gravity-tempo-data:/tmp/tempo busybox chown -R 10001:10001 /tmp/tempo
+docker compose restart tempo
+docker compose ps tempo
+docker compose logs tempo --tail 20
+
+# ------------------------------------------------------------------------------
+# 4. Fixing OpenTelemetry Collector (Loki & Tempo Exporters)
+# ------------------------------------------------------------------------------
+# Note: In docker/observability/otel-collector-config.yaml, replaced removed 'loki'
+# exporter with 'otlp_http/loki' (http://loki:3100/otlp) and updated 'otlp/tempo'
+# to 'otlp_grpc/tempo'.
+docker compose restart otel-collector
+docker compose ps tempo otel-collector
+docker compose logs otel-collector --since 1m
+
+# ------------------------------------------------------------------------------
+# 5. Fixing Queue & App Container (PHP 8.4 Upgrade)
+# ------------------------------------------------------------------------------
+# Note: In docker/Dockerfile, updated base image to 'FROM php:8.4-fpm' to satisfy
+# composer platform requirements (PHP >= 8.4.0).
+docker pull php:8.4-fpm
+docker compose build app queue
+docker compose up -d app queue
+docker compose ps
+docker compose logs queue --tail 20
+docker compose exec queue sh -c "tr '\0' ' ' < /proc/1/cmdline"
+
+# ------------------------------------------------------------------------------
+# 6. Verification and Health Checks
+# ------------------------------------------------------------------------------
+curl -i http://localhost:8080
+docker compose exec app php artisan --version
+docker compose exec app php artisan test
+docker compose logs --tail 20 otel-collector tempo queue
+docker compose ps
+git diff docker/
+
+# ==============================================================================
+# Root Causes and Fixes Applied
+# ==============================================================================
+
+1. Queue Container (laravel-gravity-queue) & App Container (laravel-gravity-app):
+   - Root Cause:
+     Dependencies in vendor/ (installed via composer, including symfony/* v8 components)
+     required PHP >= 8.4.0. The Dockerfile was using "FROM php:8.3-fpm". When the queue worker
+     started, vendor/composer/platform_check.php threw a fatal RuntimeException:
+     "Your Composer dependencies require a PHP version '>= 8.4.0'. You are running 8.3.33."
+   - Fix:
+     - In docker/Dockerfile: Updated line 1 to "FROM php:8.4-fpm".
+     - Rebuilt images with "docker compose build app queue" and recreated containers with
+       "docker compose up -d app queue".
+
+2. Tempo Container (laravel-gravity-tempo):
+   - Root Cause:
+     a) Tempo v3 (grafana/tempo:latest) removed the top-level "compactor:" configuration
+        block, resulting in:
+        "failed to parse configFile /etc/tempo.yaml: line 11: field compactor not found in type app.Config".
+     b) In docker/observability/tempo.yaml, distributor receiver protocols did not specify
+        an IP address, defaulting to 127.0.0.1 and rejecting connections over the docker network.
+     c) The named volume "gravity-tempo-data" was initialized with root:root permissions (755).
+        Since Tempo runs as UID 10001:10001, it failed to write with:
+        "mkdir /tmp/tempo/blocks: permission denied".
+   - Fix:
+     - In docker/observability/tempo.yaml:
+       - Removed the obsolete "compactor:" section.
+       - Explicitly bound distributor receiver endpoints to 0.0.0.0:4318 (HTTP) and 0.0.0.0:4317 (gRPC).
+       - Added "wal: path: /tmp/tempo/wal" under storage.trace.
+     - Changed ownership of the volume directory to UID 10001:10001:
+       docker run --rm -v laravel-gravity_gravity-tempo-data:/tmp/tempo busybox chown -R 10001:10001 /tmp/tempo
+     - Restarted Tempo: "docker compose restart tempo".
+
+3. OpenTelemetry Collector (laravel-gravity-otel):
+   - Root Cause:
+     Recent releases of otel/opentelemetry-collector-contrib removed the legacy "loki" exporter,
+     failing startup with:
+     "'exporters' unknown type: 'loki' for id: 'loki'".
+   - Fix:
+     - In docker/observability/otel-collector-config.yaml:
+       - Replaced the "loki" exporter with "otlp_http/loki" targeting Loki's native OTLP endpoint:
+         endpoint: "http://loki:3100/otlp"
+       - Updated the logs pipeline exporter to use "otlp_http/loki".
+       - Modernized "otlp/tempo" exporter to "otlp_grpc/tempo" to eliminate deprecation warnings.
+     - Restarted collector: "docker compose restart otel-collector".

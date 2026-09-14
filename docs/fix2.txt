@@ -1,0 +1,187 @@
+# ==============================================================================
+# Commands Executed During Session (OpenTelemetry Testing & Grafana Setup)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Initial Inspection of Observability Stack
+# ------------------------------------------------------------------------------
+docker compose ps
+docker logs laravel-gravity-otel --tail 50
+docker logs laravel-gravity-tempo --tail 50
+docker logs laravel-gravity-loki --tail 50
+curl -I http://localhost:8080
+curl -s http://localhost:9090/api/v1/targets
+curl -s http://localhost:9090/api/v1/label/__name__/values
+curl -s http://localhost:3200/api/search
+curl -s http://localhost:3100/ready
+curl -s http://localhost:3001/api/datasources
+
+# ------------------------------------------------------------------------------
+# 2. Investigating PHP OpenTelemetry Dependencies
+# ------------------------------------------------------------------------------
+docker compose exec app php -m
+docker compose exec app php -r "var_dump(getenv('OTEL_PHP_AUTOLOAD_ENABLED'), getenv('OTEL_EXPORTER_OTLP_ENDPOINT'), getenv('OTEL_SERVICE_NAME'));"
+docker compose exec app php -r "require 'vendor/autoload.php'; echo get_class(OpenTelemetry\API\Globals::tracerProvider());"
+ls -la vendor/open-telemetry
+grep -i "open-telemetry" composer.lock
+docker compose exec app composer check-platform-reqs
+docker compose exec app composer install --dry-run
+# Note: composer install dry-run revealed composer.lock was out of sync with
+# manually edited composer.json containing obsolete packages (slim, wordpress, zipkin).
+
+# ------------------------------------------------------------------------------
+# 3. Resolving Dependencies & Installing OpenTelemetry Packages
+# ------------------------------------------------------------------------------
+# In composer.json: Removed unused "open-telemetry/opentelemetry-auto-slim",
+# "open-telemetry/opentelemetry-auto-wordpress", and "open-telemetry/exporter-zipkin".
+docker compose exec app composer update
+docker compose exec app php -r "require 'vendor/autoload.php'; echo get_class(OpenTelemetry\API\Globals::tracerProvider());"
+# Output confirmed: OpenTelemetry\SDK\Trace\TracerProvider
+
+# ------------------------------------------------------------------------------
+# 4. Enabling CLI & Background Worker Tracing
+# ------------------------------------------------------------------------------
+# Note: In docker-compose.yaml, added 'OTEL_PHP_TRACE_CLI_ENABLED=true' to both
+# 'app' and 'queue' services so Artisan commands and queue workers are traced.
+docker compose exec -e OTEL_PHP_TRACE_CLI_ENABLED=true app php -r "
+require 'vendor/autoload.php';
+\$tracer = OpenTelemetry\API\Globals::tracerProvider()->getTracer('test-app');
+\$span = \$tracer->spanBuilder('manual-test-operation')->startSpan();
+\$span->setAttribute('app.test', true);
+\$span->end();
+OpenTelemetry\API\Globals::tracerProvider()->forceFlush();
+OpenTelemetry\API\Globals::tracerProvider()->shutdown();
+echo 'Span created with trace ID: ' . \$span->getContext()->getTraceId() . PHP_EOL;
+"
+curl -s http://localhost:3200/api/traces/<traceId>
+
+# ------------------------------------------------------------------------------
+# 5. Configuring Grafana Datasources with Fixed UIDs & Trace-to-Logs
+# ------------------------------------------------------------------------------
+# In docker/observability/grafana/provisioning/datasources/datasources.yaml:
+# Added deleteDatasources section to clear stale random UIDs and assigned
+# explicit, stable UIDs (prometheus, loki, tempo) with tracesToLogsV2 correlation.
+
+# ------------------------------------------------------------------------------
+# 6. Provisioning Grafana Dashboards
+# ------------------------------------------------------------------------------
+# - In docker-compose.yaml: Added volume mounts for dashboard provisioning:
+#   - ./docker/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+#   - ./docker/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+# - Created docker/observability/grafana/provisioning/dashboards/dashboards.yaml
+# - Created docker/observability/grafana/dashboards/laravel-observability.json
+#   (stat panels, Prometheus scrape graph, live Loki logs, quick links)
+
+# ------------------------------------------------------------------------------
+# 7. Implementing Telemetry Verification Tools (Artisan Command & Web Route)
+# ------------------------------------------------------------------------------
+# - In routes/console.php: Implemented 'php artisan telemetry:test' to emit
+#   nested spans to Tempo, test_counter_count_total to Prometheus, correlated
+#   logs to Loki, and print clickable Grafana links.
+# - In routes/web.php: Enhanced 'GET /otel-test' to emit traces, metrics, logs,
+#   and return JSON with the trace_id and pre-formatted Grafana Explore URLs.
+
+# ------------------------------------------------------------------------------
+# 8. Restarting Services & Verifying End-to-End
+# ------------------------------------------------------------------------------
+docker compose up -d grafana app queue
+docker compose restart grafana
+docker logs laravel-gravity-grafana --tail 30
+curl -s http://localhost:3001/api/datasources
+curl -s http://localhost:3001/api/search
+docker compose exec app php artisan telemetry:test
+curl -s http://localhost:8080/otel-test
+curl -s http://localhost:3200/api/search?limit=5
+curl -s http://localhost:8889/metrics | grep test_counter
+curl -s "http://localhost:9090/api/v1/query?query=test_counter_count_total"
+curl -s -G "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={service_name=~".+"}'
+docker compose exec app php artisan test
+
+
+# ==============================================================================
+# Root Causes and Fixes Applied
+# ==============================================================================
+
+1. OpenTelemetry PHP Packages Missing from vendor/ & composer.lock Mismatch:
+   - Root Cause:
+     composer.json contained OpenTelemetry packages (and unused packages like wordpress,
+     slim, and zipkin), but composer.lock had not been updated and composer install/update
+     had never been executed. The vendor/open-telemetry directory did not exist.
+   - Fix:
+     - Cleaned up composer.json by removing unused instrumentation packages.
+     - Executed "docker compose exec app composer update" inside the container.
+     - Verified OpenTelemetry SDK classes (TracerProvider, MeterProvider, LoggerProvider)
+       loaded and initialized properly.
+
+2. CLI Tracing Disabled by Default in OpenTelemetry PHP:
+   - Root Cause:
+     When running Artisan CLI commands, OpenTelemetry PHP disables tracing by default
+     in CLI SAPI (returning a NoopTracer with Trace ID "00000000000000000000000000000000")
+     unless OTEL_PHP_TRACE_CLI_ENABLED=true is set.
+   - Fix:
+     - Added "OTEL_PHP_TRACE_CLI_ENABLED=true" to environment variables for both "app"
+       and "queue" services in docker-compose.yaml.
+     - Artisan commands now generate active traces with real Trace IDs recorded in Tempo.
+
+3. Grafana Datasource UID Inconsistency & Broken Trace-to-Logs:
+   - Root Cause:
+     Grafana auto-generated random alphanumeric UIDs for provisioned datasources (e.g.,
+     P8E80F9AEF21F6940) because explicit "uid:" fields were missing in datasources.yaml.
+     The Tempo datasource referenced "datasourceUid: 'loki'", which failed to resolve.
+   - Fix:
+     - Updated docker/observability/grafana/provisioning/datasources/datasources.yaml:
+       - Added deleteDatasources to purge stale auto-generated UIDs.
+       - Defined fixed UIDs: "prometheus", "loki", and "tempo".
+       - Configured tracesToLogsV2 with tag mapping for service.name.
+
+4. Absence of Pre-configured Dashboards in Grafana:
+   - Root Cause:
+     Grafana had datasources provisioned but zero provisioned dashboards. Users landing
+     on Grafana at http://localhost:3001 had an empty homepage and had to manually construct
+     queries.
+   - Fix:
+     - Added dashboard provisioning volume mounts to docker-compose.yaml.
+     - Created docker/observability/grafana/provisioning/dashboards/dashboards.yaml.
+     - Created docker/observability/grafana/dashboards/laravel-observability.json with:
+       - Stat panels for OTel Collector scrape status and test hit counters.
+       - Time-series panel for Prometheus scrape duration.
+       - Live log stream panel querying Loki for {service_name=~".+"}.
+       - Quick reference markdown links for Grafana Explore.
+
+5. Telemetry Buffering / Delayed Flush in PHP Scripts:
+   - Root Cause:
+     OpenTelemetry exporters buffer telemetry batches. Without an explicit forceFlush(),
+     short-lived CLI commands or fast web requests could terminate before the batch was sent.
+   - Fix:
+     - Added forceFlush() calls on TracerProvider, MeterProvider, and LoggerProvider in both
+       the Artisan command and the web test route before response return / command exit.
+
+6. Grafana Port Inconsistency in Documentation:
+   - Root Cause:
+     docker/observability/README.md stated Grafana was exposed on port 3000, but
+     docker-compose.yaml mapped port 3001:3000 to prevent local port conflicts.
+   - Fix:
+     - Updated docker/observability/README.md to reflect port 3001 and included full
+       testing and exploration instructions.
+
+
+# ==============================================================================
+# Quick Reference Guide: Testing & Viewing Data
+# ==============================================================================
+
+1. Trigger Telemetry via Artisan:
+   docker compose exec app php artisan telemetry:test
+
+2. Trigger Telemetry via Web:
+   curl http://localhost:8080/otel-test
+   (or open http://localhost:8080/otel-test in a web browser)
+
+3. Automatic Tracing:
+   Browse any standard Laravel route (e.g. http://localhost:8080/ or http://localhost:8080/login).
+   Traces are automatically captured and routed to Tempo.
+
+4. Grafana URLs (Port 3001, Anonymous Admin enabled):
+   - Overview Dashboard: http://localhost:3001/d/laravel-gravity-overview
+   - Explore Tempo:      http://localhost:3001/explore (Select "Tempo" datasource)
+   - Explore Loki:       http://localhost:3001/explore (Select "Loki", query: {service_name=~".+"})
+   - Explore Prometheus: http://localhost:3001/explore (Select "Prometheus", query: test_counter_count_total)
